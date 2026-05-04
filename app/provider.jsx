@@ -1,11 +1,10 @@
 "use client"
 import React, { useState } from 'react';
 import { ThemeProvider as NextThemesProvider } from 'next-themes';
-import Header from '@/components/custom/Header';
 import { MessagesContext } from '@/context/MessagesContext';
 
 function Provider({children}) {
-  const [messages,setMessages]=useState();
+  const [messages,setMessages]=useState([]);
   return (
     <div>
       <MessagesContext.Provider value={{messages,setMessages}}>
@@ -15,7 +14,6 @@ function Provider({children}) {
             enableSystem 
             disableTransitionOnChange
             >
-              <Header />
             {children}
         </NextThemesProvider>
       </MessagesContext.Provider>

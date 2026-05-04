@@ -1,9 +1,7 @@
 "use client"
 import React, { useContext, useState, useEffect, useCallback, memo } from 'react';
-import dynamic from 'next/dynamic';
 import Lookup from '@/data/Lookup';
 import { MessagesContext } from '@/context/MessagesContext';
-import axios from 'axios';
 import Prompt from '@/data/Prompt';
 import { useConvex, useMutation } from 'convex/react';
 import { useParams } from 'next/navigation';
@@ -11,11 +9,26 @@ import { api } from '@/convex/_generated/api';
 import { Loader2Icon, Download } from 'lucide-react';
 import JSZip from 'jszip';
 
-const SandpackProvider = dynamic(() => import("@codesandbox/sandpack-react").then(mod => mod.SandpackProvider), { ssr: false });
-const SandpackLayout = dynamic(() => import("@codesandbox/sandpack-react").then(mod => mod.SandpackLayout), { ssr: false });
-const SandpackCodeEditor = dynamic(() => import("@codesandbox/sandpack-react").then(mod => mod.SandpackCodeEditor), { ssr: false });
-const SandpackPreview = dynamic(() => import("@codesandbox/sandpack-react").then(mod => mod.SandpackPreview), { ssr: false });
-const SandpackFileExplorer = dynamic(() => import("@codesandbox/sandpack-react").then(mod => mod.SandpackFileExplorer), { ssr: false });
+import { 
+    SandpackProvider, 
+    SandpackLayout, 
+    SandpackCodeEditor, 
+    SandpackPreview, 
+    SandpackFileExplorer,
+    useSandpack 
+} from "@codesandbox/sandpack-react";
+
+const ActiveFileHeader = () => {
+    const { sandpack } = useSandpack();
+    const { activeFile } = sandpack;
+    const fileName = activeFile?.split('/').pop() || 'index.js';
+    return (
+        <div className='text-sm text-gray-300 font-mono font-medium'>
+            {fileName}
+        </div>
+    );
+};
+
 
 function CodeView() {
     const { id } = useParams();
@@ -57,7 +70,10 @@ function CodeView() {
 
     const GenerateAiCode = useCallback(async () => {
         setLoading(true);
-        const PROMPT = JSON.stringify(messages) + " " + Prompt.CODE_GEN_PROMPT;
+        const PROMPT = `${Prompt.CODE_GEN_PROMPT}
+
+USER CONVERSATION:
+${JSON.stringify(messages)}`;
         
         try {
             const response = await fetch('/api/gen-ai-code', {
@@ -71,18 +87,20 @@ function CodeView() {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let finalData = null;
+            let buffer = '';
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
 
                 for (const line of lines) {
-                    if (line.startsWith('data: ')) {
+                    if (line.trim().startsWith('data: ')) {
                         try {
-                            const data = JSON.parse(line.slice(6));
+                            const data = JSON.parse(line.trim().slice(6));
                             if (data.done && data.final) {
                                 finalData = data.final;
                             }
@@ -179,81 +197,94 @@ function CodeView() {
     }, [files]);
 
     return (
-        <div className='relative'>
-            <div className='bg-[#181818] w-full p-2 border'>
-                <div className='flex items-center justify-between'>
-                    <div className='flex items-center flex-wrap shrink-0 bg-black p-1 justify-center
-                    w-[140px] gap-3 rounded-full'>
-                        <h2 onClick={() => setActiveTab('code')}
-                            className={`text-sm cursor-pointer 
-                        ${activeTab == 'code' && 'text-blue-500 bg-blue-500 bg-opacity-25 p-1 px-2 rounded-full'}`}>
-                            Code</h2>
-
-                        <h2 onClick={() => setActiveTab('preview')}
-                            className={`text-sm cursor-pointer 
-                        ${activeTab == 'preview' && 'text-blue-500 bg-blue-500 bg-opacity-25 p-1 px-2 rounded-full'}`}>
-                            Preview</h2>
+        <div className='relative h-full flex flex-col bg-[#111111]'>
+            <SandpackProvider 
+                files={files}
+                template="react" 
+                theme={'dark'}
+                customSetup={{
+                    dependencies: {
+                        ...Lookup.DEPENDANCY
+                    },
+                    entry: '/index.js'
+                }}
+                options={{
+                    externalResources: ['https://cdn.tailwindcss.com'],
+                    bundlerTimeoutSecs: 120,
+                    recompileMode: "immediate",
+                    recompileDelay: 300,
+                    classes: {
+                        "sp-layout": "h-full",
+                        "sp-wrapper": "h-full",
+                    }
+                }}
+            >
+                {/* Top Bar */}
+                <div className='flex items-center justify-between px-4 py-3 border-b border-[#2a2a2a] shrink-0'>
+                    {/* Left: Tabs */}
+                    <div className='flex items-center gap-1 bg-[#1a1a1a] p-1 rounded-full'>
+                        <button 
+                            onClick={() => setActiveTab('code')}
+                            className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-full transition-colors ${activeTab === 'code' ? 'bg-[#2a2a2a] text-white' : 'text-gray-400 hover:text-gray-300'}`}
+                        >
+                            <span className="text-blue-500 font-mono text-xs">{'</>'}</span>
+                            Code
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('preview')}
+                            className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-full transition-colors ${activeTab === 'preview' ? 'bg-[#2a2a2a] text-white' : 'text-gray-400 hover:text-gray-300'}`}
+                        >
+                            <span className="text-blue-500 text-xs">🌐</span>
+                            Preview
+                        </button>
                     </div>
                     
-                    {/* Download Button */}
+                    {/* Center: Dynamic File name */}
+                    <ActiveFileHeader />
+
+                    {/* Right: Download Button */}
                     <button
                         onClick={downloadFiles}
-                        className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full transition-colors duration-200"
+                        className="flex items-center gap-2 bg-[#e54b4b] hover:bg-[#d43d3d] text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors"
                     >
                         <Download className="h-4 w-4" />
-                        <span>Download Files</span>
+                        Download Code
                     </button>
                 </div>
-            </div>
-            <SandpackProvider 
-            files={files}
-            template="react" 
-            theme={'dark'}
-            customSetup={{
-                dependencies: {
-                    ...Lookup.DEPENDANCY
-                },
-                entry: '/index.js'
-            }}
-            options={{
-                externalResources: ['https://cdn.tailwindcss.com'],
-                bundlerTimeoutSecs: 120,
-                recompileMode: "immediate",
-                recompileDelay: 300
-            }}
-            >
-                <div className="relative">
-                    <SandpackLayout>
-                        {activeTab === 'code' ? (
-                            <div className="flex w-full" style={{ height: '80vh' }}>
-                                <SandpackFileExplorer style={{ height: '100%' }} />
-                                <SandpackCodeEditor 
-                                    style={{ height: '100%' }}
-                                    showTabs
-                                    showLineNumbers
-                                    showInlineErrors
-                                    wrapContent 
-                                />
-                            </div>
-                        ) : (
-                            <div className="flex w-full" style={{ height: '80vh' }}>
+
+                <div className="flex-1 overflow-hidden flex flex-col">
+                    <div className="w-full" style={{ height: 'calc(100vh - 55px)' }}>
+                        <SandpackLayout style={{ height: '100%', border: 'none', background: 'transparent' }}>
+                            {activeTab === 'code' ? (
+                                <>
+                                    <SandpackFileExplorer style={{ height: '100%', background: '#111111' }} />
+                                    <SandpackCodeEditor 
+                                        style={{ height: '100%' }}
+                                        showTabs={false}
+                                        showLineNumbers
+                                        showInlineErrors
+                                        wrapContent 
+                                    />
+                                </>
+                            ) : (
                                 <SandpackPreview 
                                     style={{ height: '100%', width: '100%' }} 
                                     showNavigator={true}
                                     showOpenInCodeSandbox={false}
                                     showRefreshButton={true}
                                 />
-                            </div>
-                        )}
-                    </SandpackLayout>
+                            )}
+                        </SandpackLayout>
+                    </div>
                 </div>
             </SandpackProvider>
 
-            {loading&&<div className='p-10 bg-gray-900 opacity-80 absolute top-0 left-0 
-            rounded-lg w-full h-full flex items-center justify-center z-50'>
-                <Loader2Icon className='animate-spin h-10 w-10 text-white'/>
-                <h2 className='text-white'> Generating files...</h2>
-            </div>}
+            {loading && (
+                <div className='absolute inset-0 bg-[#111111]/80 backdrop-blur-sm flex flex-col items-center justify-center z-50'>
+                    <Loader2Icon className='animate-spin h-10 w-10 text-white mb-4'/>
+                    <h2 className='text-white font-medium'>Generating files...</h2>
+                </div>
+            )}
         </div>
     );
 }

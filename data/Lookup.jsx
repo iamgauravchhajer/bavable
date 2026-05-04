@@ -28,16 +28,49 @@ export default {
             </body>
             </html>`
         },
-        '/App.css': {
+        '/index.js': {
+            code: `import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);`
+        },
+        '/App.js': {
+            code: `import React from 'react';
+
+function App() {
+  return (
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <h1 className="text-4xl font-bold text-blue-600">
+        Welcome to Bhavable
+      </h1>
+    </div>
+  );
+}
+
+export default App;`
+        },
+        '/index.css': {
             code: `@tailwind base;
-            @tailwind components;
-            @tailwind utilities;`
+@tailwind components;
+@tailwind utilities;`
         },
         '/tailwind.config.js': {
             code: `/** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
-    "./src/**/*.{js,jsx,ts,tsx}",
+    "./index.html",
+    "./App.{js,jsx,ts,tsx}",
+    "./components/**/*.{js,jsx,ts,tsx}",
+    "./pages/**/*.{js,jsx,ts,tsx}",
+    "./data/**/*.{js,jsx,ts,tsx}",
+    "./lib/**/*.{js,jsx,ts,tsx}",
   ],
   theme: {
     extend: {},
